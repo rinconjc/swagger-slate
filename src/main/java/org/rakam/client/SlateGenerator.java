@@ -14,6 +14,7 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.rakam.client.builder.document.SlateDocumentGenerator;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.charset.Charset;
@@ -22,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.apache.commons.lang3.StringUtils.isNotBlank;
 import static org.apache.commons.lang3.StringUtils.isNotEmpty;
 
 public class SlateGenerator {
@@ -65,6 +67,10 @@ public class SlateGenerator {
         @Option(name = {"-o", "--output"}, title = "output directory",
                 description = "where to write the generated files (current dir by default)")
         private String output = "";
+
+        @Option(name = {"-t", "--template"}, title = "markdown template",
+                description = "Use markdown template")
+        private String template = "";
 
         @Override
         public void run() {
@@ -112,7 +118,6 @@ public class SlateGenerator {
             }
 
             try {
-                MarkdownBuilder build = new SlateDocumentGenerator(builder.build()).build();
                 File dir = new File(output);
                 if (!dir.exists()) {
                     dir.mkdirs();
@@ -123,7 +128,14 @@ public class SlateGenerator {
                 File file = new File(dir, "slate.md");
                 file.createNewFile();
                 FileOutputStream fileOutputStream = new FileOutputStream(file);
-                fileOutputStream.write(build.toString().getBytes(Charset.forName("UTF-8")));
+                SlateDocumentGenerator generator = new SlateDocumentGenerator(builder.build());
+                if(isNotBlank(template)){
+                    System.out.println("generating using template:" + template);
+                    generator.generateTo(new FileInputStream(template), fileOutputStream);
+                } else {
+                    MarkdownBuilder build = generator.build();
+                    fileOutputStream.write(build.toString().getBytes(Charset.forName("UTF-8")));
+                }
                 fileOutputStream.close();
             } catch (IOException e) {
                 throw Throwables.propagate(e);
