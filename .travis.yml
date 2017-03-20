@@ -6,6 +6,7 @@ addons:
   apt:
     packages:
       - oracle-java8-installer
+before_deploy: "mvn package"
 deploy:
   provider: releases
   api_key:
