@@ -72,6 +72,10 @@ public class SlateGenerator {
                 description = "Use markdown template")
         private String template = "";
 
+        @Option(name = {"-r", "--tags-order"}, title = "tags ordering",
+                description = "Use comma separated tagnames")
+        private String tagsOrder = "";
+
         @Override
         public void run() {
 
@@ -128,7 +132,7 @@ public class SlateGenerator {
                 File file = new File(dir, "slate.md");
                 file.createNewFile();
                 FileOutputStream fileOutputStream = new FileOutputStream(file);
-                SlateDocumentGenerator generator = new SlateDocumentGenerator(builder.build());
+                SlateDocumentGenerator generator = new SlateDocumentGenerator(builder.build(), tagsOrder);
                 if(isNotBlank(template)){
                     System.out.println("generating using template:" + template);
                     generator.generateTo(new FileInputStream(template), fileOutputStream);

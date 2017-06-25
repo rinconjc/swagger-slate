@@ -71,7 +71,7 @@ public class DefinitionsDocument  {
     }
 
     private void definitions(Map<String, Model> definitions, MarkupDocBuilder docBuilder) throws IOException {
-            docBuilder.sectionTitleLevel1(DEFINITIONS);
+            docBuilder.documentTitle(DEFINITIONS);
             for(Map.Entry<String, Model> definitionsEntry : definitions.entrySet()){
                 String definitionName = definitionsEntry.getKey();
                 if(StringUtils.isNotBlank(definitionName)) {
@@ -105,6 +105,9 @@ public class DefinitionsDocument  {
         List<String> headerAndContent = new ArrayList();
         List<String> header = Arrays.asList("name", "description", "required", "schema", "default");
         headerAndContent.add(StringUtils.join(header,  "|"));
+        if(properties==null){
+            System.out.println("properties was null:" + definitionName);
+        }
         if(!properties.isEmpty()){
             for (Map.Entry<String, Property> propertyEntry : properties.entrySet()) {
                 Property property = propertyEntry.getValue();

@@ -31,10 +31,12 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.google.common.collect.Lists.newArrayList;
 import static com.google.common.collect.Maps.immutableEntry;
@@ -59,6 +61,7 @@ public class SlateDocumentGenerator {
     private List<CodegenConfigurator> configurators = null;
     private Swagger swagger;
     private Set<String> definitions;
+    private List<String> tagsOrder;
 
     private Map<OperationIdentifier, Map<String, String>> templates;
 
@@ -72,10 +75,11 @@ public class SlateDocumentGenerator {
             immutableEntry("swagger_definitions", this::generateDefinitions))
             .stream().collect(Collectors.toMap(Entry::getKey, Entry::getValue));
 
-    public SlateDocumentGenerator(ImmutableList<CodegenConfigurator> configurators) {
+    public SlateDocumentGenerator(ImmutableList<CodegenConfigurator> configurators, String tagsOrder) {
         this.configurators = configurators;
         markdownBuilder = new MarkdownBuilder();
         definitions = new HashSet<>();
+        this.tagsOrder = tagsOrder==null || tagsOrder.trim().isEmpty()?null: Arrays.asList(tagsOrder.split("\\s*,\\s*"));
     }
 
     public MarkdownBuilder build()
@@ -212,12 +216,20 @@ public class SlateDocumentGenerator {
 
     private MarkdownBuilder generateApiTags(MarkdownBuilder markdownBuilder) {
         if (!swagger.getTags().isEmpty()) {
-            for (Tag tag : swagger.getTags()) {
-                String name = tag.getName();
-                String description = tag.getDescription();
-                markdownBuilder.documentTitle(CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.UPPER_CAMEL, name.replaceAll("-", " "))).newLine().textLine(description).newLine();
-                processOperation(markdownBuilder, name);
-            }
+            Map<String, Tag> tags = swagger.getTags().stream().collect(Collectors.toMap(t->t.getName().toLowerCase(), Function.identity()));
+            Set<String> nonOrderedTags = new HashSet<>(tags.keySet());
+            nonOrderedTags.removeAll(tagsOrder);
+            Stream.concat(tagsOrder.stream(), nonOrderedTags.stream()).forEachOrdered(tagName->{
+                Tag tag = tags.get(tagName.toLowerCase());
+                if(tag==null){
+                    LOGGER.warn("tag not found:" + tagName);
+                } else {
+                    String name = tag.getName();
+                    String description = tag.getDescription();
+                    markdownBuilder.documentTitle(CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.UPPER_CAMEL, name.replaceAll("-", " "))).newLine().textLine(description).newLine();
+                    processOperation(markdownBuilder, name);
+                }
+            });
             markdownBuilder.newLine();
         }
         return markdownBuilder;
@@ -252,7 +264,9 @@ public class SlateDocumentGenerator {
             Response response = operation.getResponses().get("200");
             if (response != null) {
                 markdownBuilder.textLine("> The above command returns JSON structured like this:").newLine();
-
+                if (response.getSchema() == null) {
+                    LOGGER.warn("missing response schema for :" + operation.getOperationId());
+                }
                 Object example = response.getSchema().getExample();
                 if (example != null) {
                     markdownBuilder.source(example.toString(), "json");
@@ -265,6 +279,12 @@ public class SlateDocumentGenerator {
 
                     markdownBuilder.source(prettyJson, "json");
                 }
+            }
+
+            String description = trimNullableText(operation.getDescription());
+
+            if (!description.isEmpty()) {
+                markdownBuilder.paragraph(description);
             }
 
             markdownBuilder.sectionTitleLevel2("HTTP Request").textLine("`" + method + " " + path + "`");
@@ -287,10 +307,6 @@ public class SlateDocumentGenerator {
 
             markdownBuilder.tableWithHeaderRow(responses);
 
-            String description = trimNullableText(operation.getDescription());
-            if (!description.isEmpty()) {
-                markdownBuilder.paragraph(description);
-            }
         } catch (Exception e) {
             LOGGER.error(format("An error occurred while processing operation. %s %s. Skipping..",
                     method.toUpperCase(Locale.ENGLISH), path), e);
@@ -425,6 +441,8 @@ public class SlateDocumentGenerator {
             return "1";
         } else if (value instanceof DoubleProperty) {
             return "1.0";
+        } else if (value instanceof DecimalProperty) {
+            return "1.0";
         } else if (value instanceof DateProperty) {
             return "\"2015-01-20\"";
         } else if (value instanceof BooleanProperty) {
@@ -433,6 +451,10 @@ public class SlateDocumentGenerator {
             return "{\"prop\": {}}";
         } else if (value instanceof RefProperty) {
             Model model = swagger.getDefinitions().get(((RefProperty) value).getSimpleRef());
+            if (model.getProperties() == null) {
+                LOGGER.warn("missing properties for " + value.getType() + " :" + parent.getName());
+                return "{}";
+            }
             return "{" + model.getProperties()
                     .entrySet()
                     .stream()
@@ -621,7 +643,7 @@ public class SlateDocumentGenerator {
                 processOperation(markdownBuilder, entry.getKey(), "DELETE", value.getDelete());
             }
             if (value.getPatch() != null && value.getPatch().getTags().contains(tag)) {
-                processOperation(markdownBuilder, entry.getKey(), "PATH", value.getPatch());
+                processOperation(markdownBuilder, entry.getKey(), "PATCH", value.getPatch());
             }
             if (value.getOptions() != null && value.getOptions().getTags().contains(tag)) {
                 processOperation(markdownBuilder, entry.getKey(), "OPTIONS", value.getOptions());
